@@ -1,0 +1,270 @@
+---
+title: "Impact of Sleep and Exercise on Academic Performance"
+author: "Matthew Burke"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document: 
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    theme: "cerulean"
+---
+```{r pressure, echo=FALSE, out.width = '110%', out.height = '110%'}
+knitr::include_graphics("brain.png")
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+## Load your packages here , your packages will be hidden but make sure that you mention which packages you used in your document
+library(tidyverse)
+library(ggplot2)
+library(readr)
+library(knitr)
+library(kableExtra)
+library(patchwork)
+library(broom)
+library(purrr)
+library(readxl)
+
+load("~/School/Junior Year/Spring 2021/ECON 220 Lab/Final Project/Econ220DataS21_ano.Rdata")
+
+
+```
+
+# Introduction and Motivation
+I am a member of the Cross Country team at Emory, so obviously working out and getting enough sleep is a big part of my life.  I've always been told by people that exercising has critical cognitive benefits.  Specifically, I've been told that people who exercise frequently tend to have better test scores than those who do not workout on a regular basis.  
+
+Using the answers from Econ 220 students to a series of questions, I will be looking at how sleep and exercise impact amount of books read and their cumulative GPA respectively.  I will determine the impact of these measures by splitting the class by sex and then assessing the averages.
+
+Using an external data source created by Oral Roberts University measuring the Fitbit data of students, I will look at their combined total of active minutes and steps, this will be a measure of how active the student is, and see this correlates with their GPA.
+
+
+
+
+# The Data Set {.tabset}
+```{r include = FALSE}
+classData<- Econ220DataS21_ano %>%
+  select(sex, q28, q14, GPA, q36)%>% #selects specific columns from data
+  rename(             #change the names of these variables for better readability
+    exercise = q28,
+    booksRead = q36,
+    sleep = q14)
+classData<- na.omit(classData) #remove missing data
+classData$GPA <- replace(classData$GPA, classData$GPA=="Highschool - 3.9", 3.9)
+classData$GPA <- as.numeric(classData$GPA)
+classData$GPA <- round(classData$GPA, digits=1)
+
+fitbitData <- read_csv("FitbitsAndGradesData_Fall2017.csv")
+activeMinutes <- fitbitData$Peak + fitbitData$Cardio + fitbitData$FatBurn
+fitbitData$activeMinutes <- activeMinutes
+exerciseMeasure <- fitbitData$activeMinutes + fitbitData$Steps
+fitbitData$exerciseMeasure <- exerciseMeasure
+fitbitData <- select(fitbitData, Gender, activeMinutes, Steps, exerciseMeasure, GPA)
+fitbitData$Gender <- replace(fitbitData$Gender, fitbitData$Gender==1, "Female")
+fitbitData$Gender <- replace(fitbitData$Gender, fitbitData$Gender==0, "Male")
+fitbitData$GPA <- round(fitbitData$GPA, digits=1)
+
+```
+```{r include=FALSE}
+avgF <- read_excel("~/School/Junior Year/Spring 2021/ECON 220 Lab/Final Project/averagesF.xlsx")
+sleepBooksF <- select(avgF, hourRangeF, avgBooksF)
+sleepBooksF <- na.omit(sleepBooksF)
+sleepBooksF$hourRangeF <- factor(sleepBooksF$hourRangeF, levels = c("5-5.9", "6-6.9", "7-7.9", "8-8.9", "9-9.9", "10-10.9"))
+exerGPAF <- select(avgF, exerciseF, avgGPAF)
+
+avgM <-read_excel("~/School/Junior Year/Spring 2021/ECON 220 Lab/Final Project/averagesM.xlsx")
+sleepBooksM <- select(avgM, sleepM, booksM)
+sleepBooksM <- na.omit(sleepBooksM)
+sleepBooksM$sleepM <- factor(sleepBooksM$sleepM, levels = c("4-4.9", "5-5.9", "6-6.9", "7-7.9", "8-8.9", "9-9.9"))
+exerGPAM <- select(avgM, exerciseM, avgGPAM)
+
+fitAvg <- read_excel("~/School/Junior Year/Spring 2021/ECON 220 Lab/Final Project/fitAvg.xlsx")
+
+exercGPAM <- select(fitAvg, GPA, exerM)
+exercGPAM$GPA <- factor(exercGPAM$GPA, levels=c("0-1", "1.1-2", "2.1-3", "3.1-4"))
+
+exercGPAF <- select(fitAvg, GPA, exerF)
+exercGPAF$GPA <- factor(exercGPAF$GPA, levels=c("0-1", "1.1-2", "2.1-3", "3.1-4"))
+```
+
+## Econ 220 Data Summary
+From the class data collected through a series of questions earlier in the semester, I am using the amount of days that a student exercises in a week, average hours of sleep per night, cumulative GPA, and amount of books a student reads in a semester. I will then split the data by sex to perform my analysis.  I will use the approximate averages for sleep and exercise as the point to split the groups between more sleep and less sleep and the same for exercise. 
+```{r results='hold'}
+classData %>% 
+  group_by(sex) %>% 
+  summarize(AvgSleep=mean(sleep), avgBooks=mean(booksRead), avgExerc=mean(exercise), AvgGPA=mean(GPA)) %>% 
+  kable(digits=3,
+        col.names=c("Sex", "Sleep", "Books Read", "Exercise", "GPA")) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+## Fitbit Data Summary
+The other data I am using, was found externally.  The data was collected by Oral Roberts University  by measuring the fitbit data of 581 students. From this data, I am using the steps, active minutes and GPA.  I will combine the active minutes and steps as a measure of how much exercise the students get. I will also split this data by gender and perform my analysis.
+```{r results='hold'}
+fitbitData %>%
+  group_by(Gender) %>%
+  summarize(AvgSteps=mean(Steps), avgActiveMinutes=mean(activeMinutes), avgExercise=mean(exerciseMeasure), avgGPA=mean(GPA)) %>%
+  kable(digits=3,
+        col.names=c("Gender", "Steps", "Active Minutes", "Exercise Measure", "GPA")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)
+  
+            
+```
+
+
+# Preliminary Graphs {.tabset}
+## Exercise vs GPA
+```{r  results='hide'}
+p3 <- ggplot(exerGPAF, aes(x=exerciseF, y=avgGPAF)) + geom_bar(stat="identity", fill="pink", color="black") + theme(legend.position="none") + ggtitle("Female: Exercise vs GPA") + labs(x="Number of Days Student Exercises in a Week", y="Average GPA")
+
+p4 <- ggplot(exerGPAM, aes(x=exerciseM, y=avgGPAM)) + geom_bar(stat="identity", fill="blue", color="black") + theme(legend.position="none") + ggtitle("Male: Exercise vs GPA") + labs(x="Number of Days Student Exercises in a Week", y="Average GPA")
+
+p3+p4
+
+```
+
+From these graphs, it appears that the number of days a student exercises does not impact the average GPA.  The average GPA does not seem to rise or fall significantly as the number of days the student exercises increases.
+
+## Sleep vs Books Read
+```{r  results='hide'}
+p1 <- ggplot(sleepBooksF, aes(x=hourRangeF, y=avgBooksF)) + geom_bar(stat="identity", fill="pink", color="black") + theme(legend.position="none") + ggtitle("Female: Sleep vs Books") + labs(x="Hours of Sleep", y="Average Books Read")
+
+p2 <- ggplot(sleepBooksM, aes(x=sleepM, y=booksM)) + geom_bar(stat="identity", fill="blue", color="black") + theme(legend.position="none") + ggtitle("Male: Sleep vs Books") + labs(x="Hours of Sleep", y="Average Books Read")
+
+p1+p2
+
+```
+
+From these graphs, it does not appear that sleep has a significant impact on the average amount of books read in a semester for females.  The average amount of books read by all female students seems to rise from 0 hours of sleep to 7 hours of sleep, where it peaks from 7 to 10 and then falls again. For males, there is an outlier in the 5 hour range. Apart from the outlier, the average amount of books appears to stay the same until the 9 hour range, where it rises more than double.
+
+## Fitbit Data: GPA vs exerciseMeasure
+```{r  results='hide'}
+p5 <- ggplot(exercGPAF, aes(x=GPA, y=exerF)) + geom_bar(stat="identity", fill="pink", color="black") + theme(legend.position="none") + ggtitle("Female: GPA vs Exercise") + labs(x="GPA", y="Average Exercise Measure")
+
+p6 <- ggplot(exercGPAM, aes(x=GPA, y=exerM)) + geom_bar(stat="identity", fill="blue", color="black") + theme(legend.position="none") + ggtitle("Male: GPA vs Exercise") + labs(x="GPA", y="Average Exercise Measure")
+
+p5+p6
+
+```
+
+From the graph for females, it appears that the average activity measure peaks for GPAs from 1.1-2 and then falls.  This indicates that as the females exercised more their GPA decreased.  From the graph for males, the opposite is apparent.  The average activity measure rises for GPAs from 1.1-4.  This indicates that as males exercised more their GPA increased.
+
+
+# Hypotheses
+
+| **First two hypotheses, based on Econ 220 survey:**
+
+| *Hypothesis (1)* 
+Null: Individuals who exercise four or more days in a week read have a higher GPA than those who exercise less than four days in a week.
+
+Alternative: Individuals who exercise four or more days in a week have a lower GPA than those who exercise less than four days in a week.
+
+
+| *Hypothesis (2)* 
+Null: Individuals who get an average of 7.5 hours of sleep or more read more books than those who exercise less than four days in a week.
+
+Alternative: Individuals who get an average of 7.5 hours of sleep or more read less books than those who exercise less than four days in a week.
+
+| **Third hypothesis, based on Fitbit Data:**
+
+| *Hypothesis (3)* 
+Null: There is a positive correlation between GPA and combined total of active minutes and steps for these individuals.
+
+Alternative: There is a negative correlation or no correlation between GPA and combined total of active minutes and steps for these individuals.
+
+
+# Tests {.tabset}
+## Hypothesis 1
+**Class Data: Exercise vs GPA**
+```{r results='hold'}
+maleMoreExercise <- filter(classData, sex=="Male", exercise>=3)
+maleLessExercise <- filter(classData, sex=="Male", exercise<3)
+
+t1 <- t.test(maleMoreExercise$GPA, maleLessExercise$GPA)
+
+femaleMoreExercise <- filter(classData, sex=="Female", exercise>=2)
+femaleLessExercise <- filter(classData, sex=="Female", exercise<2)
+
+t2 <- t.test(femaleMoreExercise$GPA, femaleLessExercise$GPA)
+
+tab1 <- map_df(list(t1, t2), tidy)
+
+tab1 <- rename(tab1, meanMore=estimate1)
+tab1 <- rename(tab1, meanLess=estimate2)
+  
+sex <- c("Male", "Female")
+tab1$sex <- sex
+
+tab1 <- tab1[c("sex", "statistic", "p.value", "conf.low", "conf.high", "meanMore", "meanLess")]
+
+kable(tab1, digits=3,
+        col.names=c("sex", "statistic", "p.value", "conf.low", "conf.high", "meanMore", "meanLess")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+**Analysis for Males:** The results of this t-test show a p-value of .392.  Since the p-value is greater than .05, we cannot reject the null hypothesis.  The difference in average GPAs lies between -0.249 and 0.099. Despite the fact that the average GPAs are different, 3.630 and 3.6705 for males who exercise 3 or more days and those who exercise less than 3 days respectively, we can conclude that there is no statistically significant difference in their average GPAs.
+
+**Analysis for Females:** The results of this t-test show a p-value of .178.  Since the p-value is greater than .05, we cannot reject the null hypothesis.  The difference lies between -0.269 and 0.052.  Despite the fact that the average GPAs are different, 3.604 and 3.712 for females who exercise 2 or more days and those who exercise less than 2 days respectively, we can conclude that there is no statistically significant difference in their average GPAs.
+
+## Hypothesis 2
+**Class Data: Sleep vs Books Read**
+```{r results='hold'}
+malesMoreSleep <- filter(classData, sex=="Male", sleep>=7)
+malesLessSleep <- filter(classData, sex=="Male", sleep<7)
+
+t3 <- t.test(malesMoreSleep$booksRead, malesLessSleep$booksRead)
+
+femalesMoreSleep <- filter(classData, sex=="Female", sleep>=7)
+femalesLessSleep <- filter(classData, sex=="Female", sleep<7)
+
+t4 <- t.test(femalesMoreSleep$booksRead, femalesLessSleep$booksRead)
+
+tab2 <- map_df(list(t3, t4), tidy)
+
+tab2 <- rename(tab2, meanMore=estimate1)
+tab2 <- rename(tab2, meanLess=estimate2)
+  
+tab2$sex <- sex
+
+tab2 <- tab2[c("sex", "statistic", "p.value", "conf.low", "conf.high", "meanMore", "meanLess")]
+
+kable(tab2, digits=3,
+        col.names=c("sex", "statistic", "p.value", "conf.low", "conf.high", "meanMore", "meanLess")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)
+
+```
+**Analysis for Males:** The results of this t-test show a p-value of .370.  Since the p-value is greater than .05, we cannot reject the null hypothesis.  The difference lies between -6.836 and 2.731.  Despite the fact that the average books read are different, 2.947 and 5 for males who get an average of 7 hours of sleep or more and those who get an average of less than 7 hours of sleep respectively, we can conclude that there is no statistically significant difference in their average books read.
+
+**Analysis for Females:** The results of this t-test show a p-value of .759.  Since the p-value is greater than .05, we cannot reject the null hypothesis.  The difference lies between -1.184 and 1.609.  Despite the fact that the average books read are different, 3.303 and 3.091 for females who get an average of 7 hours of sleep or more and those who get an average of less than 7 hours of sleep respectively,  we can conclude that there is no statistically significant difference in their average books read.
+
+## Hypothesis 3
+**Fitbit Data: Sleep vs GPA**
+```{r results='hold'}
+maleFitBitData <- filter(fitbitData, Gender=="Male")
+t5 <- cor.test(maleFitBitData$exerciseMeasure, maleFitBitData$GPA)
+
+femaleFitBitData <- filter(fitbitData, Gender=="Female")
+t6 <- cor.test(femaleFitBitData$exerciseMeasure, femaleFitBitData$GPA)
+
+tab3 <- map_df(list(t5, t6), tidy)
+
+tab3 <- rename(tab3, correlationValue=estimate)
+
+tab3$sex <- sex
+
+tab3 <- tab3[c("sex", "statistic", "p.value", "conf.low", "conf.high", "correlationValue")]
+
+kable(tab3, digits=3,
+        col.names=c("sex", "statistic", "p.value", "conf.low", "conf.high", "correlationValue")) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)
+
+```
+**Analysis for Males:** The results of correlation-test show a p-value of almost 0.  Since the p-value is less than .05, we can reject the null hypothesis in favor of the alternative.  The estimated correlation between the exercise measure and GPA for males is 0.425.  The correlation value lies between 0.314 and 0.524.  Therefore, we can conclude that there is a statistically significant linear relationship between the amount of exercise and GPA.
+
+**Analysis for Females:** The results of correlation-test show a p-value of almost 0.  Since the p-value is less than .05, we can reject the null hypothesis in favor of the alternative.  The estimated correlation between the exercise measure and GPA for females is 0.430.  The correlation value lies between 0.340 and 0.513.  Therefore, we can conclude that there is a statistically significant linear relationship between the amount of exercise and GPA.
+
+
+# Conclusion
+In this project, I compared two health measures, sleep and exercise, to two academic measures, amount of books read and GPA.  I wanted to determine if these health measures have an impact on academic performance.  From the class data, it appears that the health measures I used do not have a statistically significant impact on the academic measures chosen.  However, the Fitbit data showed that there is a positive correlation between exercise and GPA.  The Fitbit data had over 6 times the population of the class data.  So, if I think ifthe population size for the class data was larger, the results may have been different.  If I were to do this project again, I would probably choose different variables for my health and academic measures than sleep and books read.  Also I would change how I calculate my exercise measure for the Fitbit data.  By adding them together, the steps had a much greater impact than active minutes.  I would try to scale the steps or active minutes so they have a more equal impact.  
+
+# References
+Broaddus, Allie; Jaquis, Brandon; Jones, Colt; Jost, Scarlet; Lang, Andrew; Li, Ailin; et al. (2018): Dataset: Fitbits, field-tests, and grades. The effects of a healthy and physically active lifestyle on the academic performance of first year college students.. figshare. Dataset. https://doi.org/10.6084/m9.figshare.7218497.v1 
